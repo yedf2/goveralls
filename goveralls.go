@@ -50,6 +50,7 @@ func (a *Flags) Set(value string) error {
 
 var (
 	extraFlags    Flags
+	envs          = flag.String("envs", "", "test will be executed against each env")
 	pkg           = flag.String("package", "", "Go package")
 	verbose       = flag.Bool("v", false, "Pass '-v' argument to 'go test' and output to stdout")
 	race          = flag.Bool("race", false, "Pass '-race' argument to 'go test'")
@@ -161,49 +162,60 @@ func getCoverage() ([]*SourceFile, error) {
 	}
 	coverpkg := fmt.Sprintf("-coverpkg=%s", strings.Join(pkgs, ","))
 	var pfss [][]*cover.Profile
-	for _, line := range pkgs {
-		f, err := ioutil.TempFile("", "goveralls")
-		if err != nil {
-			return nil, err
-		}
-		f.Close()
-		cmd := exec.Command("go")
-		outBuf := new(bytes.Buffer)
-		cmd.Stdout = outBuf
-		cmd.Stderr = outBuf
-		coverm := *covermode
-		if *race {
-			coverm = "atomic"
-		}
-		args := []string{"go", "test", "-covermode", coverm, "-coverprofile", f.Name(), coverpkg}
-		if *verbose {
-			args = append(args, "-v")
-			cmd.Stdout = os.Stdout
-		}
-		if *race {
-			args = append(args, "-race")
-		}
-		args = append(args, extraFlags...)
-		args = append(args, line)
-		cmd.Args = args
+	envss := []string{""}
+	if *envs != "" {
+		envss = strings.Split(*envs, ",")
+	}
+	for _, env := range envss {
+		for _, line := range pkgs {
+			f, err := ioutil.TempFile("", "goveralls")
+			if err != nil {
+				return nil, err
+			}
+			f.Close()
+			cmd := exec.Command("go")
+			if env != "" {
+				cmd.Env = os.Environ()
+				cmd.Env = append(cmd.Env, env)
+			}
+			outBuf := new(bytes.Buffer)
+			cmd.Stdout = outBuf
+			cmd.Stderr = outBuf
+			coverm := *covermode
+			if *race {
+				coverm = "atomic"
+			}
+			args := []string{"go", "test", "-covermode", coverm, "-coverprofile", f.Name(), coverpkg}
+			if *verbose {
+				args = append(args, "-v")
+				cmd.Stdout = os.Stdout
+			}
+			if *race {
+				args = append(args, "-race")
+			}
+			args = append(args, extraFlags...)
+			args = append(args, line)
+			cmd.Args = args
 
-		if *show {
-			fmt.Println("goveralls:", line)
-		}
-		err = cmd.Run()
-		if err != nil {
-			return nil, fmt.Errorf("%v: %v", err, outBuf.String())
-		}
+			if *show {
+				fmt.Println("goveralls:", line)
+			}
+			fmt.Printf("running commands with env: %s: %s\n", env, strings.Join(args, " "))
+			err = cmd.Run()
+			if err != nil {
+				return nil, fmt.Errorf("%v: %v", err, outBuf.String())
+			}
 
-		pfs, err := cover.ParseProfiles(f.Name())
-		if err != nil {
-			return nil, err
+			pfs, err := cover.ParseProfiles(f.Name())
+			if err != nil {
+				return nil, err
+			}
+			err = os.Remove(f.Name())
+			if err != nil {
+				return nil, err
+			}
+			pfss = append(pfss, pfs)
 		}
-		err = os.Remove(f.Name())
-		if err != nil {
-			return nil, err
-		}
-		pfss = append(pfss, pfs)
 	}
 
 	sourceFiles, err := toSF(mergeProfs(pfss))
