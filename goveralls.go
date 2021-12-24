@@ -495,6 +495,8 @@ func process() error {
 		j.SourceFiles = files
 	}
 
+	// TODO I reset job id for github
+	j.ServiceJobID = ""
 	if *debug {
 		j := j
 		if j.RepoToken != nil && *j.RepoToken != "" {
