@@ -501,6 +501,7 @@ func process() error {
 			s := "*******"
 			j.RepoToken = &s
 		}
+		j.SourceFiles = []*SourceFile{}
 		b, err := json.MarshalIndent(j, "", "  ")
 		if err != nil {
 			return err
